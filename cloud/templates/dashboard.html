@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cloud Rocket | Dashboard</title>
+    <link rel="stylesheet" href="static/styles1.css"> <!-- Link to your CSS file -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.1/chart.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>Cloud Rocket Dashboard</h1>
+        <canvas id="cpuChart"></canvas>
+        <canvas id="networkChart"></canvas>
+        <canvas id="diskChart"></canvas>
+        <h2>Anomaly Logs</h2>
+        <table id="anomalyTable">
+            <thead>
+                <tr>
+                    <th>Timestamp</th>
+                    <th>CPU Usage</th>
+                    <th>Network In</th>
+                    <th>Network Out</th>
+                    <th>Disk Read</th>
+                    <th>Disk Write</th>
+                </tr>
+            </thead>
+            <tbody id="anomalyLogs">
+                {% if anomalies.empty %}
+                    <tr>
+                        <td colspan="6">No anomalies detected.</td>
+                    </tr>
+                {% else %}
+                    {% for index, anomaly in anomalies.iterrows() %}
+                        <tr>
+                            <td>{{ anomaly['TimeStamp'] }}</td>
+                            <td>{{ anomaly['cpu_usage'] }}</td>
+                            <td>{{ anomaly['network_in'] }}</td>
+                            <td>{{ anomaly['network_out'] }}</td>
+                            <td>{{ anomaly['disk_read'] }}</td>
+                            <td>{{ anomaly['disk_write'] }}</td>
+                        </tr>
+                    {% endfor %}
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+    <p>The anomaly alert has been sent on your email along with remedial action using a custom LLM</p>
+    <script>
+        // JavaScript code for Chart.js
+        const cpuCtx = document.getElementById('cpuChart').getContext('2d');
+        const networkCtx = document.getElementById('networkChart').getContext('2d');
+        const diskCtx = document.getElementById('diskChart').getContext('2d');
+
+        const cpuChart = new Chart(cpuCtx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'CPU Usage',
+                    data: [],
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 1,
+                    fill: false
+                }]
+            },
+            options: {
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+
+        const networkChart = new Chart(networkCtx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Network In',
+                    data: [],
+                    borderColor: 'rgba(153, 102, 255, 1)',
+                    borderWidth: 1,
+                    fill: false
+                }, {
+                    label: 'Network Out',
+                    data: [],
+                    borderColor: 'rgba(255, 159, 64, 1)',
+                    borderWidth: 1,
+                    fill: false
+                }]
+            },
+            options: {
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+
+        const diskChart = new Chart(diskCtx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Disk Read',
+                    data: [],
+                    borderColor: 'rgba(255, 99, 132, 1)',
+                    borderWidth: 1,
+                    fill: false
+                }, {
+                    label: 'Disk Write',
+                    data: [],
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    borderWidth: 1,
+                    fill: false
+                }]
+            },
+            options: {
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+
+        const threshold = 80; // Define your threshold value for anomaly detection
+
+        function updateCharts(data) {
+            const timestamps = data.map(entry => entry.TimeStamp);
+            const cpuData = data.map(entry => entry.cpu_usage);
+            const networkInData = data.map(entry => entry.network_in);
+            const networkOutData = data.map(entry => entry.network_out);
+            const diskReadData = data.map(entry => entry.disk_read);
+            const diskWriteData = data.map(entry => entry.disk_write);
+
+            // Update CPU Chart
+            cpuChart.data.labels = timestamps;
+            cpuChart.data.datasets[0].data = cpuData;
+            cpuChart.update();
+
+            // Update Network Chart
+            networkChart.data.labels = timestamps;
+            networkChart.data.datasets[0].data = networkInData;
+            networkChart.data.datasets[1].data = networkOutData;
+            networkChart.update();
+
+            // Update Disk Chart
+            diskChart.data.labels = timestamps;
+            diskChart.data.datasets[0].data = diskReadData;
+            diskChart.data.datasets[1].data = diskWriteData;
+            diskChart.update();
+        }
+
+        function renderAnomalyLogs(data) {
+            const anomalyLogs = document.getElementById('anomalyLogs');
+            let anomalyRows = ''; // Initialize variable for storing new rows
+
+            // Update anomaly logs based on fetched data
+            let anomaliesFound = false; // Track if any anomalies are found
+            data.forEach(entry => {
+                const isAnomaly = entry.cpu_usage > threshold; // Check for anomalies
+                if (isAnomaly) {
+                    anomaliesFound = true; // Mark that an anomaly was found
+                    const row = `<tr>
+                        <td>${entry.TimeStamp}</td>
+                        <td>${entry.cpu_usage}</td>
+                        <td>${entry.network_in}</td>
+                        <td>${entry.network_out}</td>
+                        <td>${entry.disk_read}</td>
+                        <td>${entry.disk_write}</td>
+                    </tr>`;
+                    anomalyRows += row; // Append new row to the variable
+                }
+            });
+
+            // If anomalies were found, update the table
+            if (anomaliesFound) {
+                anomalyLogs.innerHTML += anomalyRows; // Append new anomalies to existing table
+            } else if (anomalyLogs.innerHTML === '') {
+                anomalyLogs.innerHTML = '<tr><td colspan="6">No anomalies detected.</td></tr>'; // Show message if no data
+            }
+        }
+
+        function fetchData() {
+            fetch('/fetch-data')
+                .then(response => response.json())
+                .then(data => {
+                    updateCharts(data);
+                    renderAnomalyLogs(data);
+                })
+                .catch(error => console.error('Error fetching data:', error));
+        }
+
+        // Fetch data every minute
+        setInterval(fetchData, 60000); // 60000 milliseconds = 1 minute
+        fetchData();  // Initial fetch
+    </script>
+</body>
+</html>
